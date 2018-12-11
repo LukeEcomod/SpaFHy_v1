@@ -102,3 +102,12 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# data files
+#.pk
+.nc
+Weather_SVEcatchments.csv
+#.csv
+
+# folders
+results
