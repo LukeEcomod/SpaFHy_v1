@@ -17,8 +17,11 @@ To run the model:
 Folders:
 
 /data - contains necessary example data
+
 /misc - old and obsolete stuff; may be re-cyclable
+
 /Figs_C3 - figures etc.
+
 /results - (create!) to store results.
 
 Tested in Py 3.6, should also work with 2.7.
