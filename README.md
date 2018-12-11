@@ -1,5 +1,4 @@
 # SpaFHy v1.0
-Spatial Forest Hydrology (Launiainen et al. 2019)
 
 This is repository for SpaFHy_v1 to be submitted into Geosci. Model Dev.
 
