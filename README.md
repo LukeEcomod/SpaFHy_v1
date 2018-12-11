@@ -11,10 +11,11 @@ To run the model:
 2) create folder '/results'
 3) change file paths accordingly in spafhy_parameters
 
-4) To run catchment-scale model, see demo_spafhy_C3
-5) To run point-scale model, see demo_spafhy_point
+4) To run catchment-scale model, see demo_spafhy_C3. append parent folder to sys.path if necessary
+5) To run point-scale model, see demo_spafhy_point. append parent folder to sys.path if necessary
 
-Folders: 
+Folders:
+
 /data - contains necessary example data
 /misc - old and obsolete stuff; may be re-cyclable
 /Figs_C3 - figures etc.
