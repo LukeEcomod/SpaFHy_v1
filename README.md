@@ -24,7 +24,7 @@ Folders:
 /results - (create!) to store results.
 
 Tested in Py 3.6, should also work with 2.7.
-Required packages: numpy, pandas, NetCDF4, pickle, scipy, matplotlib, (seaborn for plotting)
+Required packages: os, sys, numpy, pandas, NetCDF4, pickle, scipy, matplotlib, (seaborn for plotting)
 Pandas is constantly evolving so depending on version some fixes may be necessary.
 
 Antti: can you check through the codes and required versions of packages. Also, test using 2.7
