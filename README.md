@@ -20,7 +20,7 @@ Folders:
 
 /misc - old and obsolete stuff; may be re-cyclable
 
-/Figs_C3 - figures etc.
+/FigsC3 - figures etc.
 
 /results - (create!) to store results.
 
