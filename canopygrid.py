@@ -397,12 +397,12 @@ class CanopyGrid():
         # print ixs
         # print('ixs', np.shape(ixs), 'gi', np.shape(gi[ixs]), 'ga', np.shape(Ga[ixs]),
         #      'T', np.shape(T[ixs]), 'AE', np.shape(AE[ixs]), 'tau', np.shape(tau[ixs]))
-        erate[ixs] = dt / Ls[ixs] * penman_monteith((1.0 - tau[ixs])*AE[ixs], 1e3*D[ixs], T[ixs], Ga[ixs], gi[ixs], units='W')
+        erate[ixs] = dt / Ls[ixs] * penman_monteith((1.0 - tau[ixs])*AE[ixs], 1e3*D[ixs], T[ixs], gi[ixs], Ga[ixs], units='W')
 #        print('gi', gi, 'Ce', Ce, 'Sh', Sh)
 
         # evaporation of intercepted water, mm
         gs = 1e6
-        erate[ixr] = dt / Lv[ixr] * penman_monteith((1.0 - tau[ixr])*AE[ixr], 1e3*D[ixr], T[ixr], Ga[ixr], gs, units='W')
+        erate[ixr] = dt / Lv[ixr] * penman_monteith((1.0 - tau[ixr])*AE[ixr], 1e3*D[ixr], T[ixr], gs, Ga[ixr], units='W')
         
         # print('erate', erate)
 
