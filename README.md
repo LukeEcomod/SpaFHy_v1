@@ -2,7 +2,7 @@
 
 This is repository for SpaFHy_v1 source code (under MIT copyright licence).
 
-Launiainen, S., Guan, M., Salmivaara, A., and Kieloaho, A.-J.: Modeling forest evapotranspiration and water balance at stand and catchment scales: a spatial approach, Hydrol. Earth Syst. Sci. Discuss., https://doi.org/10.5194/hess-2019-45, in review, 2019.
+Launiainen, S., Guan, M., Salmivaara, A., and Kieloaho, A.-J.: Modeling boreal forest evapotranspiration and water balance at stand and catchment scales: a spatial approach, Hydrol. Earth Syst. Sci., https://www.hydrol-earth-syst-sci.net/23/3457/2019/ 
 
 Contains working examples of catchment scale and point-scale models (with example data).
 
