@@ -1,6 +1,8 @@
 # SpaFHy v1.0
 
-This is repository for SpaFHy_v1 to be submitted into Geosci. Model Dev.
+This is repository for SpaFHy_v1 source code (under MIT copyright licence).
+
+Launiainen, S., Guan, M., Salmivaara, A., and Kieloaho, A.-J.: Modeling boreal forest evapotranspiration and water balance at stand and catchment scales: a spatial approach, Hydrol. Earth Syst. Sci., https://www.hydrol-earth-syst-sci.net/23/3457/2019/ 
 
 Contains working examples of catchment scale and point-scale models (with example data).
 
@@ -21,7 +23,7 @@ Folders:
 
 /FigsC3 - figures etc.
 
-/results - (create!) to store results.
+/results - (create manually!) to store results.
 
 Tested in Py 3.6, should also work with 2.7.
 Required packages: os, sys, numpy, pandas, NetCDF4, pickle, scipy, matplotlib, (seaborn for plotting)
