@@ -39,18 +39,24 @@ psoil = soil_properties()
 gisdata = read_catchment_data(pgen['catchment_id'], fpath=pgen['gis_folder'],
                               plotgrids=False, plotdistr=False)
 
+gisdata['LAI_grass'] = 0.5 * gisdata['LAI_decid']
+gisdata['LAI_shrub'] = 0.1 * gisdata['LAI_conif']
+
 # initialize SpaFHy
-spa = spafhy.initialize(pgen, pcpy, pbu, ptop, psoil, gisdata, cpy_outputs=False, 
-                        bu_outputs=False, top_outputs=False, flatten=True)
+spa, ncf, ncf_file = spafhy.initialize(pgen, pcpy, pbu, ptop, psoil, gisdata,
+                                       ncf=True,
+                                       cpy_outputs=False, 
+                                       bu_outputs=False,
+                                       top_outputs=False)
 
-# create netCDF output file
-dlat, dlon = np.shape(spa.GisData['cmask'])
-
-resultsfile = os.path.join(spa.pgen['results_folder'], spa.pgen['ncf_file'])
-spa.ncf_file = resultsfile
-
-ncf, ncf_file = spafhy.initialize_netCDF(ID=spa.id, fname=resultsfile, lat0=spa.GisData['lat0'], 
-                                         lon0=spa.GisData['lon0'], dlat=dlat, dlon=dlon, dtime=None)
+## create netCDF output file
+#dlat, dlon = np.shape(spa.GisData['cmask'])
+#
+#resultsfile = os.path.join(spa.pgen['results_folder'], spa.pgen['ncf_file'])
+#spa.ncf_file = resultsfile
+#
+#ncf, ncf_file = spafhy.initialize_netCDF(ID=spa.id, fname=resultsfile, lat0=spa.GisData['lat0'], 
+#                                         lon0=spa.GisData['lon0'], dlat=dlat, dlon=dlon, dtime=None)
 
 # read forcing data
 FORC = read_FMI_weather(pgen['catchment_id'],
@@ -87,8 +93,7 @@ for k in range(0, Nspin):
 #del spa
 #ncf.close()
 print('--done ---')
-    
-    
+
 """" 
 run spafhy and save results into ncf: note that data in ncf file now starts 
 from index Nspin +1; the first ones are Nan's

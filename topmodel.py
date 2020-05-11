@@ -63,8 +63,10 @@ class Topmodel_Homogenous():
         self.To = pp['ko']*self.dt
         
         """ 
-        local and catchment average hydrologic similarity indices (xi, X). Set xi > twi_cutoff equal to
-        cutoff value to remove tail of twi-distribution. This concerns mainly the stream network cells.
+        local and catchment average hydrologic similarity indices (xi, X).
+        Set xi > twi_cutoff equal to cutoff value to remove tail of twi-distribution.
+        This concerns mainly the stream network cells. 'Outliers' in twi-distribution are
+        problem for streamflow prediction
         """
         slope_rad = np.radians(self.slope)  # deg to rad
 
@@ -86,7 +88,9 @@ class Topmodel_Homogenous():
 
         # create dictionary of empty lists for saving results
         if outputs:
-            self.results = {'S': [], 'Qb': [], 'Qr': [], 'Qt': [], 'qr': [], 'fsat': [], 'Mbe': [], 'R': []}
+            self.results = {'S': [], 'Qb': [], 'Qr': [], 'Qt': [], 'qr': [],
+                            'fsat': [], 'Mbe': [], 'R': []
+                           }
 
     def local_s(self, Smean):
         """
@@ -108,7 +112,7 @@ class Topmodel_Homogenous():
         OUT:
             Qb - baseflow [m per unit area]
             Qr - returnflow [m per unit area]
-            qf - distributed returnflow [m]
+            qr - distributed returnflow [m]
             fsat - saturated area fraction [-]
         Note: 
             R is the mean drainage [m] from bucketgrid.
@@ -132,7 +136,8 @@ class Topmodel_Homogenous():
         # average returnflow per unit area
         Qr = np.nansum(qr)*self.CellArea / self.CatchmentArea
 
-        # now all saturation excess is in Qr so update s and S. Deficit increases when Qr is removed 
+        # now all saturation excess is in Qr so update s and S. 
+        # Deficit increases when Qr is removed 
         S = S + Qr
         self.S = S
 

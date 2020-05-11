@@ -14,7 +14,7 @@ import warnings
 import matplotlib.cbook
 warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
 
-chs = pd.read_csv(r'c:\datat\spathydata\sve_catchment_characteristics.csv', sep=';')
+chs = pd.read_csv(r'c:\datat\spathydata\sve_catchment_characteristics.csv', sep=';', encoding = "ISO-8859-1")
 f = chs[(chs.id == 22) |  (chs.id == 30)].index.values
 chs = chs.drop(f)
 chs['xoffs'] = -80000
@@ -32,9 +32,9 @@ chs['yoffs'].loc[chs.id == 14] = -90000
 chs['yoffs'].loc[chs.id == 29] = 20000
 del f
 
-ecs = pd.read_csv(r'c:\datat\spathydata\ec_sites_hess.csv', sep=';')
+ecs = pd.read_csv(r'c:\datat\spathydata\ec_sites_hess.csv', sep=';',encoding = "ISO-8859-1")
 ecs = ecs.drop([1, 2, 3, 6])
-ec_sitenames = ['FIHy\nFISII\nFICage', 'FISod', 'FIKal\nFILet', 'SEKno', 'SESky2']
+ec_sitenames = ['FIHy\nFISII\nFICage', 'FISod', 'FIKal\nFILet', 'SEKno', 'SENor\nSESky2']
 
 # vienna cooords
 wien_lon = 16.36
@@ -81,24 +81,13 @@ plt.savefig('Sitemap_large.png', dpi=300)
 fig, ax = plt.subplots()
 fig.set_size_inches(11, 8)
 m = Basemap(projection='merc', llcrnrlat=55.0, urcrnrlat=72.0, llcrnrlon=10., urcrnrlon=37, 
-            lat_0=65.0, lon_0=25.0, resolution='i')
+            lat_0=65.0, lon_0=25.0, resolution='l')
 m.drawcoastlines(linewidth=0.3)
 m.drawcountries(linewidth=0.5, linestyle='solid', color='k' )
 m.drawmapboundary(linewidth=1, color='k')
 m.drawparallels(np.arange(40, 80, 10), linewidth=0.5, labels=[0,1,0,0]) 
 # m.drawrivers(linewidth=0.5, linestyle='solid', color='blue')
 
-# plot EC sites as points
-xec, yec = m(ecs.LON_deg.values, ecs.LAT_deg.values)
-#x, y = 62.0, 23.0
-colors = plt.cm.viridis(np.linspace(0.01, 0.9, len(xec)))
-ax.set_prop_cycle('color', colors)
-for k in range(len(xec)):
-    m.plot(xec[k], yec[k], 'o', markersize=7, markeredgecolor='k', alpha=0.9, label=ec_sitenames[k]) #, label=tt) #, label=idcode)
-#
-#for lbl, xpt, ypt, in zip(ec_sitenames, xec, yec):
-#    plt.text(xpt + 10000, ypt + 10000, lbl, fontsize=8)
-    
 # plot catchments as points
 x, y = m(chs.LON_deg.values, chs.LAT_deg.values)
 offsets = np.ones((len(x),2))*10000
@@ -109,7 +98,20 @@ for lbl, xpt, ypt, xof, yof in zip(chs.id.values, x, y, chs.xoffs, chs.yoffs):
     plt.text(xpt + xof, ypt + yof, lbl, fontsize=10)
 
 
-m.fillcontinents(alpha=0.3)
+# plot EC sites as points
+mrk = ['o', 's','^','v','<','>']
+
+xec, yec = m(ecs.LON_deg.values, ecs.LAT_deg.values)
+#x, y = 62.0, 23.0
+#colors = plt.cm.viridis(np.linspace(0.01, 0.9, len(xec)))
+#ax.set_prop_cycle('color', colors)
+nn = 0
+for k in range(len(xec)):
+    m.plot(xec[k], yec[k], markeredgecolor='k', marker=mrk[nn], markersize=8, linewidth=0.0, alpha=0.5, label=ec_sitenames[k]) #, label=tt) #, label=idcode)
+    #nn += 1
+
+#m.fillcontinents(alpha=0.05)
+
 plt.legend(loc=2)
 plt.show()
-plt.savefig('Sitemap_zoomed.png', dpi=300)
+plt.savefig('Sitemap.png', dpi=600)

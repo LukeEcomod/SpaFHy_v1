@@ -189,16 +189,28 @@ t_ef = np.ravel(np.sum(EF, axis=0))
 t_e = np.ravel(np.sum(IE, axis=0))
 
 fig = plt.figure()
-fig.set_size_inches(4.5, 3.2)
+fig.set_size_inches(4.5, 4.5)
 
 x = np.ravel(LAId + LAIc)
 cm = plt.get_cmap('Blues')
 
+# number of years
+nyrs = len(np.unique(Qmeas[ix:].index.year))
+
+plt.subplot(211) # mean annual ET and its components
+plt.plot(x, t_et/nyrs, 'o', color='k', markersize=4, alpha=0.5, label='ET')
+plt.plot(x, t_e/nyrs, 'o', color=cm(0.4), markersize=4, alpha=0.4, label='E')
+plt.plot(x, t_tr/nyrs, 'o', color=cm(0.7), markersize=4, alpha=0.7, label='T$_r$')
+plt.plot(x, t_ef/nyrs, 'o', color=cm(1.0), markersize=4, alpha=0.8, label='E$_f$')
+plt.ylabel('[mm / year]')
+plt.legend(fontsize=10, frameon=False)
+
+plt.subplot(212)
 plt.plot(x, t_e/t_et, 'o', color=cm(0.4), markersize=4, alpha=0.4, label='E')
 plt.plot(x, t_tr/t_et, 'o', color=cm(0.7), markersize=4, alpha=0.7, label='T$_r$')
 plt.plot(x, t_ef/t_et, 'o', color=cm(1.0), markersize=4, alpha=0.8, label='E$_f$')
-plt.legend(fontsize=10, frameon=False)
-plt.ylabel('(-)', fontsize=10)
+#plt.legend(fontsize=10, frameon=False)
+plt.ylabel('contribution to ET (-)', fontsize=10)
 plt.xlabel('LAI (m$^2$m$^{-2}$)', fontsize=10, labelpad=-3)
 ax = plt.gca()
 ax.grid(linestyle='--', alpha=0.5)
@@ -355,6 +367,14 @@ plt.xlabel('S (mm)', fontsize=10)
 
 plt.savefig('ch3_moisture.png', dpi=660)
 #plt.savefig('ch3_moisture.pdf')
+
+# soil moisture as function of LAI in dry period
+plt.figure()
+x = LAIc + LAId
+y = Wliq[ix_slow, :, :]
+plt.plot(x, y, 'o');
+plt.xlabel('LAI [m2 m-2]')
+plt.ylabel('soil moisture [m3 m-3]')
 
 #%% Extract data for analysis of soil moisture variability
 f0 = int(np.where(tvec == '2012-01-01')[0])

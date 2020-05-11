@@ -161,8 +161,8 @@ def draw_Fig3(data, mod):
         ax.set_aspect('equal') 
         plt.setp(plt.gca().get_yticklabels(), fontsize=8)
         plt.setp(plt.gca().get_xticklabels(), fontsize=8)
-        plt.ylabel('$\\theta$ mod (m$^3$ m$^{-3}$)', fontsize=9)
-        plt.xlabel('$\\theta$ obs (m$^3$ m$^{-3}$)', fontsize=9, labelpad=-3)
+        plt.ylabel('$\\theta_{mod}$ (m$^3$ m$^{-3}$)', fontsize=9)
+        plt.xlabel('$\\theta_{obs}$ (m$^3$ m$^{-3}$)', fontsize=9, labelpad=-3)
             
         
         #%plot SWE
@@ -214,4 +214,57 @@ def draw_Fig3(data, mod):
         plt.savefig(tt, dpi=600)
         plt.savefig('Fig3_FIHy.pdf')
         
- 
+#%%
+""" read hyde data, make simulations and plot figure """
+from spafhy_point import SpaFHy_point
+from spafhy_io import read_HydeDaily
+from spafhy_parameters import parameters_FIHy
+
+pgen, pcpy, pbu = parameters_FIHy()
+
+# read forcing data to dataframe
+dat, FORC = read_HydeDaily(pgen['forcing_file'])
+FORC['Prec'] = FORC['Prec'] / pgen['dt']  # mms-1
+FORC['T'] = FORC['Ta'].copy()
+
+# np.array cmask is needed to apply model components at a single point
+cmask = np.ones(1)
+    
+# run model for different parameter combinations, save results into dataframe
+# +/- 15%, 15%, 20%, 30%
+# amax, g1_conif, wmax, wmaxsnow
+p = [[10.0, 2.1, 3.5, 1.3, 4.5],
+     [8.5, 1.7, 2.8, 1.05, 3.15],
+     [11.5, 2.5, 4.2, 2.6, 5.4]]
+
+out = []
+results = []
+for k in range(3):
+    a = p[k]
+    pcpy['amax'] = a[0]
+    pcpy['g1_conif'] = a[1]
+    pcpy['g1_decid'] = a[2]
+    pcpy['wmax'] = a[3]
+    pcpy['wmaxsnow'] = a[4]
+
+    model = SpaFHy_point(pgen, pcpy, pbu, FORC, cmask=cmask, cpy_outputs=True, bu_outputs=True)
+    nsteps=len(FORC)
+    model._run(0, nsteps)
+    
+    # during model run, results are stored in two dictionaries: 
+    # canopycrid outputs: model.cpy.results
+    # bucketgid outputs: model.bu.resutls
+    
+    # extract them, convert to dataframe and save to csv
+    cres = model.cpy.results
+    bres = model.bu.results
+    del bres['ET'] # also bucket returns ET but in [m] so remove key
+    res = {**cres, **bres} # combine into one dict
+    res = {key: np.ravel(res[key]) for key in res.keys()} # and ravel
+    
+    # convert to dataframe and save
+    resu = pd.DataFrame(data=res, columns=res.keys(), index=model.FORC.index, dtype=float)
+    out.append(model)
+    results.append(resu)
+    
+    del model, resu

@@ -17,7 +17,6 @@ last edit: Oct 2018 / Samuli
 
 """
 import numpy as np
-import configparser
 eps = np.finfo(float).eps
 
 
@@ -39,32 +38,57 @@ class CanopyGrid():
             and sets self._LAI_decid and self.X equal to minimum values.
             Also leaf-growth & senescence parameters are intialized to zero.
         """
-        epsi = 0.01
-        print(type(state['lai_conif']))
+        epsi = 0.01 # small number
+        
         self.Lat = cpara['loc']['lat']
         self.Lon = cpara['loc']['lon']
 
         # physiology: transpi + floor evap
         self.physpara = cpara['physpara']
 
-        # phenology
+        # phenology & LAI cycle
         self.phenopara = cpara['phenopara']
         
         # canopy parameters and state
         self.hc = state['hc'] + epsi
         self.cf = state['cf'] + epsi
+        
         #self.cf = 0.1939 * ba / (0.1939 * ba + 1.69) + epsi
         # canopy closure [-] as function of basal area ba m2ha-1;
         # fitted to Korhonen et al. 2007 Silva Fennica Fig.2
+        
+        spec_para = cpara['spec_para']
+        ptypes = {}
+        LAI = 0.0
+
+        for pt in list(spec_para.keys()):
+            ptypes[pt] = spec_para[pt]
+            ptypes[pt]['LAImax'] = state['LAI_' + pt]            
+
+        self.ptypes = ptypes
+        
+        # compute gridcell average LAI and photosynthesis-stomatal conductance parameters:
+        LAI = 0.0
+        Amax = 0.0
+        q50 = 0.0
+        g1 = 0.0
+        for pt in self.ptypes.keys():
+            if self.ptypes[pt]['lai_cycle']:
+                pt_lai = self.ptypes[pt]['LAImax'] * self.phenopara['lai_decid_min']
+            else:
+                pt_lai = self.ptypes[pt]['LAImax']
             
-        self._LAIconif = state['lai_conif'] + epsi # m2m-2
-        self._LAIdecid = state['lai_decid_max']*self.phenopara['lai_decid_min'] + epsi
-        self.LAI = self._LAIconif + self._LAIdecid
+            LAI += pt_lai
+            Amax += pt_lai * ptypes[pt]['amax']
+            q50 += pt_lai * ptypes[pt]['q50']
+            g1 += pt_lai * ptypes[pt]['g1']
+        
+        self.LAI = LAI + epsi
+        self.physpara.update({'Amax': Amax / self.LAI, 'q50': q50 / self.LAI, 'g1': g1 / self.LAI})
 
-        self._LAIdecid_max = state['lai_decid_max'] + epsi # m2m-2        
-
-
-        # senescence starts at first doy when daylength < self.phenopara['sdl']
+        del Amax, q50, g1, pt, LAI, pt_lai
+   
+        # - compute start day of senescence: starts at first doy when daylength < self.phenopara['sdl']
         doy = np.arange(1, 366)
         dl = daylength(self.Lat, self.Lon, doy)
 
@@ -72,8 +96,7 @@ class CanopyGrid():
         self.phenopara['sso'] = doy[ix]  # this is onset date for senescence
         del ix
         
-        # self.cpara = cpara  # added new parameters self.cpara['kmt'],
-        # self.cpara['kmr'] here for testing radiation-based snow melt model
+        # snow model
         self.wmax = cpara['interc']['wmax']
         self.wmaxsnow = cpara['interc']['wmaxsnow']
         self.Kmelt = cpara['snow']['kmelt']
@@ -96,17 +119,23 @@ class CanopyGrid():
         # NOTE: this assumes simulations start 1st Jan each year !!!
         self.DDsum = 0.0
         self.X = 0.0
+
+        self._relative_lai = self.phenopara['lai_decid_min']
         self._growth_stage = 0.0
         self._senesc_stage = 0.0
 
+        # phenological state
+        self.fPheno = self.phenopara['fmin']
+        
         # create dictionary of empty lists for saving results
         if outputs:
-            self.results = {'PotInf': [], 'Trfall': [], 'Interc': [], 'Evap': [], 'ET': [],
-                            'Transpi': [], 'Efloor': [], 'SWE': [], 'LAI': [],
-                            'Mbe': [], 'LAIdecid': [], 'erate': [], 'Unload': [],
-                            'fact': []}
+            self.results = {'PotInf': [], 'Trfall': [], 'Interc': [], 'Evap': [],
+                            'ET': [], 'Transpi': [], 'Efloor': [], 'SWE': [],
+                            'LAI': [], 'Mbe': [], 'LAIfract': [], 'Unload': []
+                           }
 
-    def run_timestep(self, doy, dt, Ta, Prec, Rg, Par, VPD, U=2.0, CO2=380.0, Rew=1.0, beta=1.0, P=101300.0):
+    def run_timestep(self, doy, dt, Ta, Prec, Rg, Par, VPD, U=2.0, CO2=380.0,
+                     Rew=1.0, beta=1.0, P=101300.0):
         """
         Runs CanopyGrid instance for one timestep
         IN:
@@ -132,26 +161,24 @@ class CanopyGrid():
                         0.55) * Rg  # Launiainen et al. 2016 GCB, fit to Fig 2a
 
 
-        """ --- update phenology: self.ddsum & self.X ---"""
-        self._degreeDays(Ta, doy)
-        fPheno = self._photoacclim(Ta)
-     
-        """ --- update deciduous leaf area index --- """
-        laifract = self._lai_dynamics(doy)
+        """ --- update grid-cell phenology, LAI and average Amax, g1 and q50: self.ddsum & self.X ---"""
+        self.update_daily(Ta, doy)
 
         """ --- aerodynamic conductances --- """
         Ra, Rb, Ras, ustar, Uh, Ug = aerodynamics(self.LAI, self.hc, U, w=0.01, zm=self.zmeas,
                                                   zg=self.zground, zos=self.zo_ground)
 
         """ --- interception, evaporation and snowpack --- """
-        PotInf, Trfall, Evap, Interc, MBE, erate, unload, fact = self.canopy_water_snow(dt, Ta, Prec, Rn, VPD, Ra=Ra)
+        PotInf, Trfall, Evap, Interc, MBE, unload = self.canopy_water_snow(dt, Ta, Prec,
+                                                                           Rn, VPD, Ra=Ra)
 
         """--- dry-canopy evapotranspiration [mm s-1] --- """
-        Transpi, Efloor, Gc = self.dry_canopy_et(VPD, Par, Rn, Ta, Ra=Ra, Ras=Ras, CO2=CO2, Rew=Rew, beta=beta, fPheno=fPheno)
+        Transpi, Efloor, Gc = self.dry_canopy_et(VPD, Par, Rn, Ta, Ra=Ra, Ras=Ras,
+                                                 CO2=CO2, Rew=Rew, beta=beta, fPheno=self.fPheno)
 
         Transpi = Transpi * dt
         Efloor = Efloor * dt
-        ET = Transpi + Efloor
+        ET = Transpi + Efloor + Evap
 
         # append results to lists; use only for testing small grids!
         if hasattr(self, 'results'):
@@ -164,15 +191,50 @@ class CanopyGrid():
             self.results['Efloor'].append(Efloor)
             self.results['SWE'].append(self.SWE)
             self.results['LAI'].append(self.LAI)
-            # self.results['LAIfract'].append(laifract)
             self.results['Mbe'].append(np.nanmax(MBE))
-            self.results['LAIdecid'].append(self._LAIdecid)
-            self.results['erate'].append(erate)
+            self.results['LAIfract'].append(self._relative_lai)
             self.results['Unload'].append(unload)
-            self.results['fact'].append(fact)
 
-        return PotInf, Trfall, Interc, Evap, ET, Transpi, Efloor, MBE   # fQ,fD,fRew
+        return PotInf, Trfall, Interc, Evap, ET, Transpi, Efloor, MBE
 
+    def update_daily(self, T, doy):
+        """
+        updates temperature sum, leaf-area development, phenology and
+        computes effective parameters for grid-cell
+        Args:
+            T - daily mean temperature (degC)
+            doy - day of year
+        Returns:
+            None
+        """
+        
+        self._degreeDays(T, doy)
+        self._photoacclim(T)
+        
+        # deciduous relative leaf-area index
+        self._lai_dynamics(doy)
+        
+        # canopy effective photosynthesis-stomatal conductance parameters:
+        LAI = 0.0 
+        Amax = 0.0
+        q50 = 0.0
+        g1 = 0.0
+        for pt in self.ptypes.keys():
+            if self.ptypes[pt]['lai_cycle']:
+                pt_lai = self.ptypes[pt]['LAImax'] * self._relative_lai
+            else:
+                pt_lai = self.ptypes[pt]['LAImax']
+            LAI += pt_lai    
+            Amax += pt_lai * self.ptypes[pt]['amax']
+            q50 += pt_lai * self.ptypes[pt]['q50']
+            g1 += pt_lai * self.ptypes[pt]['g1']
+        
+        self.LAI = LAI + eps
+        
+        #print(doy, LAI, Amax / self.LAI, g1 / self.LAI)
+        
+        self.physpara.update({'Amax': Amax / self.LAI, 'q50': q50 / self.LAI, 'g1': g1 / self.LAI}) 
+        
     def _degreeDays(self, T, doy):
         """
         Calculates and updates degree-day sum from the current mean Tair.
@@ -191,15 +253,16 @@ class CanopyGrid():
         computes new stage of temperature acclimation and phenology modifier.
         Peltoniemi et al. 2015 Bor.Env.Res.
         IN: object, T = daily mean air temperature
-        OUT: fPheno - phenology modifier [0...1], updates object state
+        OUT: None, updates object state
         """
 
         self.X = self.X + 1.0 / self.phenopara['tau'] * (T - self.X)  # degC
         S = np.maximum(self.X - self.phenopara['xo'], 0.0)
         fPheno = np.maximum(self.phenopara['fmin'],
                             np.minimum(S / self.phenopara['smax'], 1.0))
-        return fPheno
-
+        
+        self.fPheno = fPheno
+        
     def _lai_dynamics(self, doy):
         """
         Seasonal cycle of deciduous leaf area
@@ -209,7 +272,7 @@ class CanopyGrid():
             doy - day of year
 
         Returns:
-            none, updates state variables self.LAIdecid, self._growth_stage,
+            none, updates state variables self._relative_lai, self._growth_stage,
             self._senec_stage
         """
         lai_min = self.phenopara['lai_decid_min']
@@ -233,12 +296,10 @@ class CanopyGrid():
             self._senesc_stage += 1.0 / sdur
             f = 1.0 - (1.0 - lai_min) * np.minimum(1.0, self._senesc_stage)
 
-        # update self.LAIdecid and total LAI
-        self._LAIdecid = self._LAIdecid_max * f
-        self.LAI = self._LAIconif + self._LAIdecid
-        return f
+        self._relative_lai = f
 
-    def dry_canopy_et(self, D, Qp, AE, Ta, Ra=25.0, Ras=250.0, CO2=380.0, Rew=1.0, beta=1.0, fPheno=1.0):
+    def dry_canopy_et(self, D, Qp, AE, Ta, Ra=25.0, Ras=250.0, CO2=380.0,
+                      Rew=1.0, beta=1.0, fPheno=1.0):
         """
         Computes ET from 2-layer canopy in absense of intercepted precipitiation,
         i.e. in dry-canopy conditions
@@ -276,12 +337,8 @@ class CanopyGrid():
 
         rhoa = 101300.0 / (8.31 * (Ta + 273.15)) # mol m-3
         
-        Amax = 1./self.LAI * (self._LAIconif * self.physpara['amax']
-                + self._LAIdecid *self.physpara['amax']) # umolm-2s-1
-
-        g1 = 1./self.LAI * (self._LAIconif * self.physpara['g1_conif']
-                + self._LAIdecid *self.physpara['g1_decid']) 
-
+        Amax = self.physpara['Amax']
+        g1 = self.physpara['g1']
         kp = self.physpara['kp']  # (-) attenuation coefficient for PAR
         q50 = self.physpara['q50']  # Wm-2, half-sat. of leaf light response
         rw = self.physpara['rw']  # rew parameter
@@ -307,7 +364,7 @@ class CanopyGrid():
         fCO2 = 1.0 - 0.387 * np.log(CO2 / 380.0)
         
         # leaf level light-saturated gs (m/s)
-        gs = 1.6*(1.0 + g1 / np.sqrt(D))*Amax / CO2 / rhoa
+        gs = 1.6*(1.0 + g1 / np.sqrt(D)) * Amax / CO2 / rhoa
         
         # canopy conductance
         Gc = gs * fQ * fRew * fCO2 * fPheno
@@ -342,9 +399,13 @@ class CanopyGrid():
             Ra - canopy aerodynamic resistance (s m-1)
         Returns:
             self - updated state W, Wf, SWE, SWEi, SWEl
-            Infil - potential infiltration to soil profile (mm)
+            PotInf - potential infiltration to soil profile (mm)
+            Trfall - throughfall to snow / soil surface (mm)
             Evap - evaporation / sublimation from canopy store (mm)
+            Interc - interception of canopy (mm)
             MBE - mass balance error (mm)
+            Unload - undloading from canopy storage (mm)
+            
         Samuli Launiainen & Ari Laurén 2014 - 2017
         Last edit 12 / 2017
         """
@@ -389,22 +450,20 @@ class CanopyGrid():
         # resistance for snow sublimation adopted from:
         # Pomeroy et al. 1998 Hydrol proc; Essery et al. 2003 J. Climate;
         # Best et al. 2011 Geosci. Mod. Dev.
-        # ri = (2/3*rhoi*r**2/Dw) / (Ce*Sh*W) == 7.68 / (Ce*Sh*W
 
         Ce = 0.01*((self.W + eps) / Wmaxsnow)**(-0.4)  # exposure coeff (-)
         Sh = (1.79 + 3.0*U**0.5)  # Sherwood numbner (-)
         gi = Sh*self.W*Ce / 7.68 + eps # m s-1
-        # print ixs
-        # print('ixs', np.shape(ixs), 'gi', np.shape(gi[ixs]), 'ga', np.shape(Ga[ixs]),
-        #      'T', np.shape(T[ixs]), 'AE', np.shape(AE[ixs]), 'tau', np.shape(tau[ixs]))
-        erate[ixs] = dt / Ls[ixs] * penman_monteith((1.0 - tau[ixs])*AE[ixs], 1e3*D[ixs], T[ixs], gi[ixs], Ga[ixs], units='W')
-#        print('gi', gi, 'Ce', Ce, 'Sh', Sh)
+
+        erate[ixs] = dt / Ls[ixs] * penman_monteith((1.0 - tau[ixs])*AE[ixs],
+                                                     1e3*D[ixs], T[ixs], gi[ixs],
+                                                     Ga[ixs], units='W')
 
         # evaporation of intercepted water, mm
         gs = 1e6
-        erate[ixr] = dt / Lv[ixr] * penman_monteith((1.0 - tau[ixr])*AE[ixr], 1e3*D[ixr], T[ixr], gs, Ga[ixr], units='W')
-        
-        # print('erate', erate)
+        erate[ixr] = dt / Lv[ixr] * penman_monteith((1.0 - tau[ixr])*AE[ixr],
+                                                     1e3*D[ixr], T[ixr], gs,
+                                                     Ga[ixr], units='W')
 
         # ---state of precipitation [as water (fW) or as snow(fS)]
         fW = np.zeros(gridshape)
@@ -482,27 +541,7 @@ class CanopyGrid():
         # mass-balance error mm
         MBE = (self.W + self.SWE) - (Wo + SWEo) - (Prec - Evap - PotInf)
 
-        # MBEsnow = self.SWE - SWEo - (Trfall - PotInf)
-#        if np.nanmax(MBEsnow) > 0.1:
-#            print('MBEsnow', MBEsnow)
-#            print('Freeze', Freeze)
-#            print('melt', Melt)
-#            print('Potinf', PotInf)
-#            print('Trfall', Trfall)
-#            print('SWE', self.SWE)
-#            print('SWo', SWEo)
-#            print('dSWE', self.SWE-SWEo)
-#            print('T', T)
-#            print('fS', fS)
-#            print('fW', fW)
-#        MBEcan = (self.W - Wo) - (Interc - Evap - Unload)
-#        if np.nanmax(MBEcan) > 0.1:
-#            print('Mbecan', MBEcan)
-#            print('Unload', Unload)
-#            print('dW', dW)
-
-        return PotInf, Trfall, Evap, Interc, MBE, erate, Unload, fS + fW
-
+        return PotInf, Trfall, Evap, Interc, MBE, Unload
 
 """ *********** utility functions ******** """
 
@@ -603,33 +642,15 @@ def penman_monteith(AE, D, T, Gs, Ga, P=101300.0, units='W'):
 
     x = (s * AE + rho * cp * Ga * D) / (s + g * (1.0 + Ga / Gs))  # Wm-2
 
-    if units is 'mm':
+    if units == 'mm':
         x = x / L  # kgm-2s-1 = mms-1
-    if units is 'mol':
+    if units == 'mol':
         x = x / L / Mw  # mol m-2 s-1
 
     x = np.maximum(x, 0.0)
     return x
 
-
 # @staticmethod
-# def aerodynamic_conductance_from_ust(Ust, U, Stanton):
-#    """
-#    computes canopy aerodynamic conductance (ms-1) from frict. velocity
-#    IN:
-#       Ustar - friction velocity (ms-1)
-#       U - mean wind speed at flux measurement heigth (ms-1)
-#       Stanton - Stanton number (kB-1) for quasi-laminar boundary layer
-#           resistance. Typically kB=1...12, use 2 for vegetation ecosystems
-#           (Verma, 1989, Garratt and Hicks, 1973)
-#    OUT:
-#       Ga - aerodynamic conductance [ms-1]
-#    """
-#    kv = 0.4  # von Karman constant
-#    ra = U / (Ust ** 2.0 + eps) + Stanton / (kv * (Ust + eps))  # sm-1
-#    Ga = 1.0 / ra  # ms-1
-#    return Ga
-
 def aerodynamics(LAI, hc, Uo, w=0.01, zm=2.0, zg=0.5, zos=0.01):
     """
     computes wind speed at ground and canopy + boundary layer conductances
@@ -656,6 +677,7 @@ def aerodynamics(LAI, hc, Uo, w=0.01, zm=2.0, zg=0.5, zos=0.01):
        Magnani et al. 1998 Plant Cell Env.
     """
     zm = hc + zm  # m
+    zg = np.minimum(zg, 0.1 * hc)
     kv = 0.4  # von Karman constant (-)
     beta = 285.0  # s/m, from Campbell & Norman eq. (7.33) x 42.0 molm-3
     alpha = LAI / 2.0  # wind attenuation coeff (Yi, 2008 eq. 23)
@@ -683,31 +705,6 @@ def aerodynamics(LAI, hc, Uo, w=0.01, zm=2.0, zg=0.5, zos=0.01):
     #print('ra', ra, 'rb', rb)
     ra = ra + rb
     return ra, rb, ras, ustar, Uh, Ug
-
-
-#def aerodynamic_conductance(hc, U, zm=2.0):
-#    """
-#    Aerodynamic conductance from log-law neglecting stability effects.
-#    Args:
-#        hc - canopy height (m)
-#        U - mean wind speed at zm
-#        zm - measurement height above canopy (m)
-#    Returns:
-#        ga - aerodynamic conductance for water vapor (ms-1)
-#
-#    Source:
-#        Leuning et al. 2008 WRR
-#        Eq: ga = U*k**2 / [ln((zm - d) / zom) * ln((zm - d) / dov) ]
-#    """
-#
-#    zm = zm + hc
-#    d = 0.66*hc  # displacement heigth (m)
-#    zom = 0.123*hc  # roughness lenght for momentum (m)
-#    zov = 0.1*zom  # roughness length for H2O (m)
-#    # k**2 = 0.16
-#    ga = 0.16*U / (np.log((zm - d) / zom) * np.log((zm - d) / zov))
-#
-#    return ga
 
 
 def wind_profile(LAI, hc, Uo, z, zm=2.0, zg=0.2):
@@ -782,26 +779,26 @@ def daylength(LAT, LON, DOY):
     return dl
 
 
-def read_ini(inifile):
-    """read_ini(inifile): reads canopygrid.ini parameter file into pp dict"""
-
-    cfg = configparser.ConfigParser()
-    cfg.read(inifile)
-
-    pp = {}
-    for s in cfg.sections():
-        section = s.encode('ascii', 'ignore')
-        pp[section] = {}
-        for k, v in cfg.items(section):
-            key = k.encode('ascii', 'ignore')
-            val = v.encode('ascii', 'ignore')
-            if section == 'General':  # 'general' section
-                pp[section][key] = val
-            else:
-                pp[section][key] = float(val)
-
-    pp['General']['dt'] = float(pp['General']['dt'])
-
-    pgen = pp['General']
-    cpara = pp['CanopyGrid']
-    return pgen, cpara
+#def read_ini(inifile):
+#    """read_ini(inifile): reads canopygrid.ini parameter file into pp dict"""
+#
+#    cfg = configparser.ConfigParser()
+#    cfg.read(inifile)
+#
+#    pp = {}
+#    for s in cfg.sections():
+#        section = s.encode('ascii', 'ignore')
+#        pp[section] = {}
+#        for k, v in cfg.items(section):
+#            key = k.encode('ascii', 'ignore')
+#            val = v.encode('ascii', 'ignore')
+#            if section == 'General':  # 'general' section
+#                pp[section][key] = val
+#            else:
+#                pp[section][key] = float(val)
+#
+#    pp['General']['dt'] = float(pp['General']['dt'])
+#
+#    pgen = pp['General']
+#    cpara = pp['CanopyGrid']
+#    return pgen, cpara

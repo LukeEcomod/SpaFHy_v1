@@ -6,10 +6,8 @@ Created on Fri Oct 28 16:18:57 2016
 
 
 """
-# import os
-# import pandas as pd
-# import matplotlib.pyplot as plt
 # import timeit
+import os
 import numpy as np
 from canopygrid import CanopyGrid
 from bucketgrid import BucketGrid
@@ -49,27 +47,28 @@ ToDo:
     BucketGrid:
         -make soil hydrologic properties more realistic e.g. using pedotransfer functions
         -kasvupaikkatyyppi (multi-NFI) --> soil properties
-        -add soil frost model, simplest would be Stefan equation with coefficients modified based on snow insulation
-          --> we need snow density algorithm: SWE <-----> depth
+        -add soil frost model, simplest would be Stefan equation with coefficients
+         modified based on snow insulation  --> we need snow density algorithm: SWE <-----> depth
     Topmodel:
-        -think of definging 'relative m & to grids' (soil-type & elevation-dependent?) and calibrate 'catchment averages'
-        -topmodel gives 'saturated zone storage deficit in [m]'. This can be converted to gwl proxy (?) if: 
-        local water retention characteristics are known & hydrostatic equilibrium assumes. 
-        Look which water retention model was analytically integrable (Campbell, brooks-corey?)
+        -think of definging 'relative m & to grids' (soil-type & elevation-dependent?)
+         and calibrate 'catchment averages'
+        -topmodel gives 'saturated zone storage deficit in [m]'. This can be
+         converted to gwl proxy (?) if: local water retention characteristics are known 
+         & hydrostatic equilibrium assumes. Look which water retention models are 
+         analytically integrable (Campbell, brooks-corey?)
     
     Graphics and analysis of results:
         -make ready functions
 
-
 (C) Samuli Launiainen 10/2016-->    
 
-VERSION 05.10.2018 / equations correspond to GMDD paper
+VERSION 07.05.2020 / equations correspond to HESS paper. Some refinements in canopygrid
+parameterization (multiple vegetation types) and fix in bucketgrid mass-balance calculations.
 
 """
 
-
-def initialize(pgen, pcpy, pbu, ptop, psoil, gisdata, cpy_outputs=False, 
-                  bu_outputs=False, top_outputs=False, flatten=False):
+def initialize(pgen, pcpy, pbu, ptop, psoil, gisdata, ncf=True,
+               cpy_outputs=False, bu_outputs=False, top_outputs=False):
     """ 
     ******************** sets up SpaFHy  **********************
     
@@ -77,12 +76,14 @@ def initialize(pgen, pcpy, pbu, ptop, psoil, gisdata, cpy_outputs=False,
     1) gets parameters as input arguments
     2) reads GIS-data, here predefined format for Seurantaverkko -cathcments
     
-    3) creates CanopyGrid (cpy), BucketGrid (bu) and Topmodel (top) -objects  within Spathy-object (spa) and temporary outputs
+    3) creates CanopyGrid (cpy), BucketGrid (bu) and Topmodel (top) -objects 
+        within Spathy-object (spa), and temporary outputs
     4) creates netCDF -file for outputs if 'ncf' = True
     
     5) returns following outputs:
         spa - spathy object
-        outf - filepath to output netCDF file.
+        ncf - netcdf file handle (if ncf=True)
+        ncf_file - ncf file name (if ncf=True)
         
     IN:
         pgen, pcpy, pbu, psoil - parameter dictionaries
@@ -101,44 +102,52 @@ def initialize(pgen, pcpy, pbu, ptop, psoil, gisdata, cpy_outputs=False,
             lat0 - y-grid
         cpy_outputs, bu_, top_ - True saves cpy, bu and top outputs to lists within each object. 
             Use only for testing, memory issue!
-        flatten - True flattens 2d arrys to 1d array containing only cells inside catchment
     OUT:
         spa - spathy object
     """
 
     # start_time = timeit.default_timer()
 
-    # moved as input argument
-    # read gis data and create necessary inputs for model initialization
-    # gisdata = create_catchment(pgen['catchment_id'], fpath=pgen['gis_folder'],
-    #                           plotgrids=False, plotdistr=False)
-
     # preprocess soildata --> dict used in BucketModel initialization    
-    soildata = preprocess_soildata(pbu, psoil, gisdata['soilclass'], gisdata['cmask'], pgen['spatial_soil'])
+    soildata = preprocess_soildata(pbu, psoil, gisdata['soilclass'],
+                                   gisdata['cmask'], pgen['spatial_soil'])
 
-    # inputs for CanopyGrid initialization: update pcpy using spatial data
+    # inputs for CanopyGrid initialization: make sure vegetation data is masked by domain
     cstate = pcpy['state']
-    cstate['lai_conif'] = gisdata['LAI_conif'] * gisdata['cmask']
-    cstate['lai_decid_max'] = gisdata['LAI_decid'] * gisdata['cmask']
-    cstate['cf'] = gisdata['cf'] * gisdata['cmask']
-    cstate['hc'] = gisdata['hc'] * gisdata['cmask']
-    
-    for key in ['w', 'swe']:
+        
+    for key in cstate.keys():
+        if 'LAI_' in key: # reads gisdata LAI-layers to cstate
+            cstate[key] = gisdata[key]
+            
         cstate[key] *= gisdata['cmask']
 
     pcpy['state'] = cstate
     del cstate
+    
+    if ncf:
+        flatten = True
 
     """ greate SpatHy object """
     spa = SpaFHy(pgen, pcpy, ptop, soildata, gisdata, cpy_outputs=cpy_outputs,
                  bu_outputs=bu_outputs, top_outputs=top_outputs, flatten=flatten)
+
+    # create netCDF output file
+    dlat, dlon = np.shape(spa.GisData['cmask'])
+
+    resultsfile = os.path.join(spa.pgen['results_folder'], spa.pgen['ncf_file'])
+
+    ncf, ncf_file = initialize_netCDF(ID=spa.id, fname=resultsfile,
+                                      lat0=spa.GisData['lat0'],
+                                      lon0=spa.GisData['lon0'],
+                                      dlat=dlat, dlon=dlon, dtime=None)
             
-    #print('Loops total [s]: ', timeit.default_timer() - start_time)
     print('********* created SpaFHy instance *********')
-
-    return spa
-
-
+    #print('Loops total [s]: ', timeit.default_timer() - start_time)
+    
+    if ncf:
+        return spa, ncf, ncf_file
+    else:
+        return spa
 
 """
 ******************************************************************************
@@ -146,13 +155,13 @@ def initialize(pgen, pcpy, pbu, ptop, psoil, gisdata, cpy_outputs=False,
 ******************************************************************************
 """
 
-
 class SpaFHy():
     """
     SpaFHy model class
     """
-    def __init__(self, pgen, pcpy, ptop, soildata, gisdata, cpy_outputs=False,
-                 bu_outputs=False, top_outputs=False, flatten=False):
+    def __init__(self, pgen, pcpy, ptop, soildata, gisdata,
+                 cpy_outputs=False, bu_outputs=False, top_outputs=False,
+                 flatten=True):
 
         self.dt = pgen['dt']  # s
         self.id = pgen['catchment_id']
@@ -175,7 +184,6 @@ class SpaFHy():
         if flatten:
             ix = np.where(np.isfinite(cmask))
             cmask = cmask[ix].copy()
-            # sdata = sdata[ix].copy()
             flowacc = flowacc[ix].copy()
             slope = slope[ix].copy()
             
@@ -185,8 +193,8 @@ class SpaFHy():
             for key in soildata:
                 soildata[key] = soildata[key][ix].copy()
                 
-            self.ix = ix  # indices to locate back to 2d grid
-
+            self.ix = ix  # indices to locate back to 2d grid       
+   
         """--- initialize CanopyGrid ---"""
         self.cpy = CanopyGrid(pcpy, pcpy['state'], outputs=cpy_outputs)
 
@@ -228,12 +236,12 @@ class SpaFHy():
                                   beta=self.bu.Ree, Rew=self.bu.Rew, P=101300.0)
 
         # run BucketGrid water balance
-        infi, infi_ex, drain, tr, eva, mbes = self.bu.watbal(dt=self.dt, rr=1e-3*potinf, tr=1e-3*transpi,
+        infi, roff, drain, tr, eva, mbes = self.bu.watbal(dt=self.dt, rr=1e-3*potinf, tr=1e-3*transpi,
                                                        evap=1e-3*efloor, retflow=qr)
 
         # catchment average [m per unit area] saturation excess --> goes to stream
         # as surface runoff
-        qs = np.nansum(infi_ex)*self.top.CellArea / self.top.CatchmentArea
+        qs = np.nansum(roff)*self.top.CellArea / self.top.CatchmentArea
 
 
         """ outputs """
@@ -248,6 +256,7 @@ class SpaFHy():
             k = self.step_nr
             
             # canopygrid
+            ncf['cpy']['LAI'][k,:,:] = self._to_grid(self.cpy.LAI)
             ncf['cpy']['W'][k,:,:] = self._to_grid(self.cpy.W)
             ncf['cpy']['SWE'][k,:,:] = self._to_grid(self.cpy.SWE)
             ncf['cpy']['Trfall'][k,:,:] = self._to_grid(trfall) 
@@ -265,6 +274,8 @@ class SpaFHy():
             ncf['bu']['Wliq'][k,:,:] = self._to_grid(self.bu.Wliq)
             ncf['bu']['Wliq_top'][k,:,:] = self._to_grid(self.bu.Wliq_top)            
             ncf['bu']['PondSto'][k,:,:] = self._to_grid(self.bu.PondSto)
+            ncf['bu']['Roff'][k,:,:] = self._to_grid(roff)
+            ncf['bu']['Retflow'][k,:,:] = self._to_grid(qr)
             ncf['bu']['Mbe'][k,:,:] = self._to_grid(mbes)              
 
             # topmodel
@@ -368,6 +379,8 @@ def initialize_netCDF(ID, fname, lat0, lon0, dlat, dlon, dtime=None):
     lat[:] = lat0
     
     # CanopyGrid outputs
+    LAI = ncf.createVariable('/cpy/LAI', 'f4', ('dtime', 'dlat', 'dlon',))
+    LAI.units = 'gridcell leaf-area index [m2m-2]'
     W = ncf.createVariable('/cpy/W', 'f4', ('dtime', 'dlat', 'dlon',))
     W.units = 'canopy storage [mm]'
     SWE = ncf.createVariable('/cpy/SWE', 'f4', ('dtime', 'dlat', 'dlon',))
@@ -395,13 +408,17 @@ def initialize_netCDF(ID, fname, lat0, lon0, dlat, dlon, dtime=None):
     Wliq_top = ncf.createVariable('/bu/Wliq_top', 'f4', ('dtime', 'dlat', 'dlon',))
     Wliq_top.units = 'org. layer vol. water cont. [m3m-3]'
     PondSto = ncf.createVariable('/bu/PondSto', 'f4', ('dtime', 'dlat', 'dlon',))
-    PondSto.units = 'pond storage [mm]'
+    PondSto.units = 'pond storage [m]'
     Infil = ncf.createVariable('/bu/Infil', 'f4', ('dtime', 'dlat', 'dlon',))
-    Infil.units = 'infiltration [mm]'
+    Infil.units = 'infiltration [m]'
     Drain = ncf.createVariable('/bu/Drain', 'f4', ('dtime', 'dlat', 'dlon',))
-    Drain.units = 'drainage [mm]'
+    Drain.units = 'drainage [m]'
+    Roff = ncf.createVariable('/bu/Roff', 'f4', ('dtime', 'dlat', 'dlon',))
+    Roff.units = 'surface runoff [m]'
+    Retflow = ncf.createVariable('/bu/Retflow', 'f4', ('dtime', 'dlat', 'dlon',))
+    Retflow.units = 'returnflow [m]'
     Mbe = ncf.createVariable('/bu/Mbe', 'f4', ('dtime', 'dlat', 'dlon',))
-    Mbe.units = 'mass-balance error [mm]'
+    Mbe.units = 'mass-balance error [m]'
 
     # topmodel outputs
     Qt = ncf.createVariable('/top/Qt', 'f4', ('dtime',))
@@ -416,6 +433,7 @@ def initialize_netCDF(ID, fname, lat0, lon0, dlat, dlon, dtime=None):
     R.units = 'average recharge [m]'
     S = ncf.createVariable('/top/S', 'f4', ('dtime',))
     S.units = 'average sat. deficit [m]'
+    
     fsat = ncf.createVariable('/top/fsat', 'f4', ('dtime',))
     fsat.units = 'saturated area fraction [-]'
     Sloc = ncf.createVariable('/top/Sloc', 'f4', ('dtime','dlat','dlon',))

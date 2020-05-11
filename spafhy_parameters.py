@@ -5,6 +5,9 @@ DEFAULT PARAMETERS OF SPAFHY FOR A SINGLE CATCHMENT AND POINT-SCALE SIMULATIONS
 Created on Mon Jun 25 18:34:12 2018
 
 @author: slauniai
+
+Last edit: 11.5.2020 / SL: canopygrid can now have multiple vegetation types.
+Phenology is common to all, LAI-cycle common to all deciduous
 """
 
 
@@ -42,36 +45,60 @@ def parameters():
                     'r': 0.05 # maximum fraction of liquid in snow (-)
                     },
                     
-            'physpara': {
-                        # canopy conductance
-                        'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
-                        'g1_conif': 2.1, # stomatal parameter, conifers
-                        'g1_decid': 3.5, # stomatal parameter, deciduous
-                        'q50': 50.0, # light response parameter (Wm-2)
-                        'kp': 0.6, # light attenuation parameter (-)
+            # canopy conductance
+            'physpara': {                          
+                        'kp': 0.6, # canopy light attenuation parameter (-)
                         'rw': 0.20, # critical value for REW (-),
                         'rwmin': 0.02, # minimum relative conductance (-)
                         # soil evaporation
                         'gsoil': 1e-2 # soil surface conductance if soil is fully wet (m/s)
                         },
+                                                    
+            'spec_para': {
+                        'conif': {'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
+                                    'g1': 2.1, # stomatal parameter
+                                    'q50': 50.0, # light response parameter (Wm-2)
+                                    'lai_cycle': False,
+                                     },
+                        'decid': {'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
+                                     'g1': 3.5, # stomatal parameter
+                                     'q50': 50.0, # light response parameter (Wm-2)
+                                     'lai_cycle': True,
+                                     },                                 
+                        'shrub':    {'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
+                                     'g1': 3.0, # stomatal parameter
+                                     'q50': 50.0, # light response parameter (Wm-2)
+                                     'lai_cycle': False,
+                                     },
+                        'grass':    {'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
+                                     'g1': 5.0, # stomatal parameter
+                                     'q50': 50.0, # light response parameter (Wm-2)
+                                     'lai_cycle': True,
+                                     },
+                        },
             'phenopara': {
-                        #seasonal cycle of physiology: smax [degC], tau[d], xo[degC],fmin[-](residual photocapasity)
-                        'smax': 18.5, # degC
-                        'tau': 13.0, # days
-                        'xo': -4.0, # degC
-                        'fmin': 0.05, # minimum photosynthetic capacity in winter (-)
-                        # deciduos phenology
-                        'lai_decid_min': 0.1, # minimum relative LAI (-)
-                        'ddo': 45.0, # degree-days for bud-burst (5degC threshold)
-                        'ddur': 23.0, # duration of leaf development (days)
-                        'sdl': 9.0, # daylength for senescence start (h)
-                        'sdur': 30.0, # duration of leaf senescence (days),
-                         },
-            'state': {
-                       'lai_conif': 3.5, # conifer 1-sided LAI (m2 m-2)
-                       'lai_decid_max': 0.5, # maximum annual deciduous 1-sided LAI (m2 m-2): 
-                       'hc': 16.0, # canopy height (m)
-                       'cf': 0.6, # canopy closure fraction (-)
+                           # phenology
+                           'smax': 18.5, # degC
+                           'tau': 13.0, # days
+                           'xo': -4.0, # degC
+                           'fmin': 0.05, # minimum photosynthetic capacity in winter (-)
+                           
+                           # annual cycle of leaf-area in deciduous trees
+                           'lai_decid_min': 0.1, # minimum relative LAI (-)
+                           'ddo': 45.0, # degree-days for bud-burst (5degC threshold)
+                           'ddur': 23.0, # duration of leaf development (days)
+                           'sdl': 9.0, # daylength for senescence start (h)
+                           'sdur': 30.0, # duration of leaf senescence (days),
+                         },                                                   
+
+            'state': {# LAI is annual maximum LAI and for gridded simulations are input from GisData!
+                      # keys must be 'LAI_ + key in spec_para
+                      'LAI_conif': 1.0,
+                      'LAI_decid': 1.0,
+                      'LAI_shrub': 0.1, 
+                      'LAI_grass': 0.2,
+                      'hc': 16.0, # canopy height (m)
+                      'cf': 0.6, # canopy closure fraction (-)
                        #initial state of canopy storage [mm] and snow water equivalent [mm]
                        'w': 0.0, # canopy storage mm
                        'swe': 0.0, # snow water equivalent mm
@@ -101,7 +128,7 @@ def parameters():
     
     # TOPMODEL
     ptop = {'dt': 86400.0, # timestep (s)
-            'm': 0.01, # scaling depth (m)
+            'm': 0.026, # scaling depth (m)
             'ko': 0.001, # transmissivity parameter (ms-1)
             'twi_cutoff': 99.5,  # cutoff of cumulative twi distribution (%)
             'so': 0.05 # initial saturation deficit (m)
@@ -217,42 +244,54 @@ def parameters_FIHy():
                     'r': 0.05 # maximum fraction of liquid in snow (-)
                     },
                     
-            'physpara': {
-                        # canopy conductance
-                        'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
-                        'g1_conif': 2.1, # stomatal parameter, conifers
-                        'g1_decid': 3.5, # stomatal parameter, deciduous
-                        'q50': 50.0, # light response parameter (Wm-2)
-                        'kp': 0.6, # light attenuation parameter (-)
+            # canopy conductance
+            'physpara': {                          
+                        'kp': 0.6, # canopy light attenuation parameter (-)
                         'rw': 0.20, # critical value for REW (-),
                         'rwmin': 0.02, # minimum relative conductance (-)
                         # soil evaporation
                         'gsoil': 1e-2 # soil surface conductance if soil is fully wet (m/s)
                         },
+                                                    
+            'spec_para': {
+                        'conif': {'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
+                                    'g1': 2.1, # stomatal parameter
+                                    'q50': 50.0, # light response parameter (Wm-2)
+                                    'lai_cycle': False,
+                                     },
+                        'decid': {'amax': 10.0, # maximum photosynthetic rate (umolm-2(leaf)s-1)
+                                     'g1': 3.5, # stomatal parameter
+                                     'q50': 50.0, # light response parameter (Wm-2)
+                                     'lai_cycle': True,
+                                     },                                 
+                        },
             'phenopara': {
-                        #seasonal cycle of physiology: smax [degC], tau[d], xo[degC],fmin[-](residual photocapasity)
-                        'smax': 18.5, # degC
-                        'tau': 13.0, # days
-                        'xo': -4.0, # degC
-                        'fmin': 0.05, # minimum photosynthetic capacity in winter (-)
-                        # deciduos phenology
-                        'lai_decid_min': 0.1, # minimum relative LAI (-)
-                        'ddo': 45.0, # degree-days for bud-burst (5degC threshold)
-                        'ddur': 23.0, # duration of leaf development (days)
-                        'sdl': 9.0, # daylength for senescence start (h)
-                        'sdur': 30.0, # duration of leaf senescence (days),
-                         },
-            'state': {
-                       'lai_conif': 3.5, # conifer 1-sided LAI (m2 m-2)
-                       'lai_decid_max': 0.5, # maximum annual deciduous 1-sided LAI (m2 m-2): 
-                       'hc': 16.0, # canopy height (m)
-                       'cf': 0.6, # canopy closure fraction (-)
+                           # phenology
+                           'smax': 18.5, # degC
+                           'tau': 13.0, # days
+                           'xo': -4.0, # degC
+                           'fmin': 0.05, # minimum photosynthetic capacity in winter (-)
+                           
+                           # annual cycle of leaf-area in deciduous trees
+                           'lai_decid_min': 0.1, # minimum relative LAI (-)
+                           'ddo': 45.0, # degree-days for bud-burst (5degC threshold)
+                           'ddur': 23.0, # duration of leaf development (days)
+                           'sdl': 9.0, # daylength for senescence start (h)
+                           'sdur': 30.0, # duration of leaf senescence (days),
+                         },                                                   
+
+            'state': {# LAI is annual maximum LAI and for gridded simulations are input from GisData!
+                      # keys must be 'LAI_ + key in spec_para
+                      'LAI_conif': 3.5,
+                      'LAI_decid': 0.5,
+                      'hc': 16.0, # canopy height (m)
+                      'cf': 0.6, # canopy closure fraction (-)
+
                        #initial state of canopy storage [mm] and snow water equivalent [mm]
                        'w': 0.0, # canopy storage mm
                        'swe': 0.0, # snow water equivalent mm
                        }
             }
-
         
     # BUCKET
     pbu = {'depth': 0.4,  # root zone depth (m)

@@ -9,7 +9,7 @@ spafhy_point:
 v. 260618 / Samuli
 """
 import numpy as np
-import pandas as pd
+#import pandas as pd
 from canopygrid import CanopyGrid
 from bucketgrid import BucketGrid
 
