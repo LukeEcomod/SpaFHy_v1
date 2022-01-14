@@ -44,10 +44,10 @@ and forest management on stand and catchment water balance.
 With appropriate parametrization it can be generalized
 outside the boreal coniferous forests.
 
-***Drained peatland version:***
+***Drained peatland version (https://github.com/LukeEcomod/SpaFHy-Peat):***
 
 Leppä, K., Sarkkola, S., Peltoniemi, M., Hökkä, H., Saarinen, M., Lehtonen, A., Laiho, R., Mäkipää, R., Launiainen, S., Nieminen, M. 2020. Selection cuttings as a tool to control water table level in boreal drained peatland forests. Front. Earth Sci., 09 October 2020, https://doi.org/10.3389/feart.2020.576510
-https://github.com/LukeEcomod/SpaFHy-Peat
+
 
 ***Applications:***
 
@@ -74,10 +74,9 @@ Folders:
 
 /results - (create manually!) to store results.
 
-Tested in Py 3.6, should also work with 2.7.
+Tested in Py3.6, should also work with 2.7.
 Required packages: os, sys, numpy, pandas, NetCDF4, pickle, scipy, matplotlib, (seaborn for plotting)
 Pandas is constantly evolving so depending on version some fixes may be necessary.
 
-Antti: can you check through the codes and required versions of packages. Also, test using 2.7
 
 ***Contact:*** samuli.launiainen@luke.fi
